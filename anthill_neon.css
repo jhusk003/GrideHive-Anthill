@@ -1,0 +1,267 @@
+/* THE ANTHILL / NEON SIGNAL SYSTEM - V4 */
+
+:root {
+    color-scheme: dark;
+    --obsidian: #0A0D1B;
+    --panel: #151B32;
+    --line: #51486F;
+    --cyan: #45E9DE;
+    --violet: #BB96FF;
+    --magenta: #FF73C6;
+    --gold: #FFD58A;
+    --text: #F6F2FF;
+    --muted: #D1CBE5;
+}
+
+/* Background */
+
+.stApp,
+[data-testid="stAppViewContainer"] {
+    background: var(--obsidian) !important;
+    color: var(--text) !important;
+}
+
+[data-testid="stHeader"] {
+    background: rgba(10,13,27,.96) !important;
+}
+
+/* Navigation */
+
+[data-testid="stSidebar"] {
+    background: #101429 !important;
+    border-right: 1px solid #5A497B !important;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] label {
+    padding: 6px 10px;
+    border-left: 3px solid transparent;
+    border-radius: 2px;
+}
+
+[data-testid="stSidebar"] [role="radiogroup"]
+label:has(input:checked) {
+    background: #24213E;
+    border-left-color: var(--cyan);
+}
+
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {
+    background: #272442;
+}
+
+/* Main Anthill header */
+
+.app-heading {
+    position: relative;
+    overflow: hidden;
+    background: #17172E !important;
+    border: 1px solid #75609E !important;
+    border-left: 4px solid var(--cyan) !important;
+    border-radius: 2px !important;
+    padding: 21px 25px !important;
+    margin-bottom: 18px !important;
+}
+
+/* Geometric woven-circuit detail */
+
+.app-heading::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 115px;
+    height: 100%;
+    opacity: .28;
+    pointer-events: none;
+
+    background: repeating-linear-gradient(
+        135deg,
+        transparent 0px,
+        transparent 13px,
+        #A77CF0 14px,
+        #A77CF0 15px,
+        transparent 16px,
+        transparent 27px
+    );
+}
+
+.app-heading h1 {
+    position: relative;
+    color: var(--text) !important;
+
+    font-family:
+        Bahnschrift,
+        "Segoe UI Variable Display",
+        "Segoe UI",
+        sans-serif !important;
+
+    font-weight: 780 !important;
+    font-size: clamp(1.8rem, 3vw, 2.5rem) !important;
+    letter-spacing: -.045em !important;
+
+    text-shadow:
+        0 0 18px rgba(187,150,255,.22);
+}
+
+.app-kicker {
+    color: var(--gold) !important;
+    letter-spacing: .16em !important;
+    font-weight: 800 !important;
+}
+
+.app-subtitle {
+    color: var(--muted) !important;
+}
+
+/* Simulation indicator */
+
+.status-strip {
+    background: #1A1B35 !important;
+    border: 1px solid #73618F !important;
+    border-left: 3px solid var(--magenta) !important;
+    border-radius: 2px !important;
+    color: var(--text) !important;
+}
+
+/* Dashboard metrics */
+
+[data-testid="stMetric"] {
+    background: var(--panel) !important;
+    border: 1px solid #62567E !important;
+    border-top: 2px solid var(--cyan) !important;
+    border-radius: 3px !important;
+    padding: 16px !important;
+
+    box-shadow:
+        0 5px 20px rgba(0,0,0,.12) !important;
+}
+
+[data-testid="stMetricLabel"] *,
+[data-testid="stMetricValue"] * {
+    color: var(--text) !important;
+}
+
+[data-testid="stMetricDelta"] * {
+    color: var(--cyan) !important;
+}
+
+/* Headings and text */
+
+.stApp h1,
+.stApp h2,
+.stApp h3 {
+    color: var(--text) !important;
+}
+
+.stApp h2 {
+    border-left: 3px solid var(--violet);
+    padding-left: 10px;
+}
+
+[data-testid="stCaptionContainer"] *,
+.stCaption {
+    color: var(--muted) !important;
+}
+
+/* Primary buttons */
+
+.stButton button[kind="primary"] {
+    background: var(--cyan) !important;
+    border: 1px solid #B1FFF8 !important;
+    border-radius: 3px !important;
+    color: #08131C !important;
+    font-weight: 750 !important;
+
+    box-shadow:
+        0 0 14px rgba(69,233,222,.16) !important;
+}
+
+.stButton button[kind="primary"] * {
+    color: #08131C !important;
+}
+
+.stButton button[kind="primary"]:hover {
+    background: #A1FFF3 !important;
+}
+
+/* Secondary buttons */
+
+.stButton button[kind="secondary"] {
+    background: #282340 !important;
+    border: 1px solid #AD90D8 !important;
+    color: var(--text) !important;
+    border-radius: 3px !important;
+}
+
+.stButton button[kind="secondary"] * {
+    color: var(--text) !important;
+}
+
+.stButton button[kind="secondary"]:hover {
+    background: #3A3059 !important;
+}
+
+/* Inputs and dropdowns */
+
+[data-baseweb="select"] > div,
+[data-baseweb="input"] > div,
+textarea {
+    background: #20233D !important;
+    border-color: #9079BB !important;
+    color: var(--text) !important;
+}
+
+[data-baseweb="popover"] [role="listbox"],
+[data-baseweb="popover"] [role="option"] {
+    background: #20233D !important;
+    color: var(--text) !important;
+}
+
+[data-baseweb="popover"] [role="option"]:hover {
+    background: #3B315D !important;
+}
+
+/* Data and charts */
+
+[data-testid="stDataFrame"],
+[data-testid="stPlotlyChart"] {
+    border: 1px solid #62557E !important;
+    border-radius: 3px !important;
+}
+
+/* Links and keyboard focus */
+
+.stApp a {
+    color: var(--cyan) !important;
+}
+
+.stApp a:hover {
+    color: var(--gold) !important;
+}
+
+.stButton button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid var(--gold) !important;
+}
+
+/* Responsive layout */
+
+@media (max-width: 640px) {
+    .app-heading {
+        padding: 16px !important;
+    }
+
+    .app-heading::before {
+        width: 45px;
+        opacity: .15;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

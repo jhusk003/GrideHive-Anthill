@@ -177,6 +177,17 @@ input {
 }
 </style>
 """, unsafe_allow_html=True)
+# GRIDHIVE_NEON_THEME_V4
+from pathlib import Path as _GridHivePath
+
+st.markdown(
+    "<style>" +
+    _GridHivePath(__file__).with_name(
+        "anthill_neon.css"
+    ).read_text(encoding="utf-8") +
+    "</style>",
+    unsafe_allow_html=True,
+)
 
 try:
     storage.init()
@@ -385,7 +396,7 @@ def asset_map(height=510):
                     [parent["lat"], parent["lon"]],
                     [n["lat"], n["lon"]]
                 ],
-                color="#7BA7B8",
+                color="#8F79D9",
                 weight=2,
                 opacity=.7
             ).add_to(m)
@@ -394,10 +405,10 @@ def asset_map(height=510):
         state = states[n["id"]]["status"]
 
         color = (
-            "#EE6673" if state == "Failed"
-            else "#F1BD69"
+            "#FF668F" if state == "Failed"
+            else "#FFD37A"
             if state == "Upstream outage"
-            else "#57C6AD"
+            else "#40F0DB"
         )
 
         label = (
@@ -1091,14 +1102,14 @@ elif page == "Restoration":
         go.Bar(
             x=comparison["Strategy"],
             y=comparison["Customer-outage hours"],
-            marker_color="#58B9BD"
+            marker_color="#37E9E0"
         )
     )
 
     fig.update_layout(
-        paper_bgcolor="#142633",
-        plot_bgcolor="#142633",
-        font_color="#E8F1F5",
+        paper_bgcolor="#11182F",
+        plot_bgcolor="#11182F",
+        font_color="#F7F3FF",
         margin=dict(l=20, r=10, t=20, b=20),
         height=300
     )
@@ -1229,10 +1240,10 @@ elif page == "Digital Twin":
         state = states[n["id"]]["status"]
 
         color = (
-            "#EE6673" if state == "Failed"
-            else "#F1BD69"
+            "#FF668F" if state == "Failed"
+            else "#FFD37A"
             if state == "Upstream outage"
-            else "#57C6AD"
+            else "#40F0DB"
         )
 
         fig.add_trace(
@@ -1264,9 +1275,9 @@ elif page == "Digital Twin":
 
     fig.update_layout(
         height=380,
-        paper_bgcolor="#142633",
-        plot_bgcolor="#142633",
-        font_color="#E8F1F5",
+        paper_bgcolor="#11182F",
+        plot_bgcolor="#11182F",
+        font_color="#F7F3FF",
         xaxis=dict(
             visible=False,
             range=[-.25, 2.25]
