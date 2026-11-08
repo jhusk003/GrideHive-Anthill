@@ -29,7 +29,7 @@ from gridhive_core import (
 
 st.set_page_config(
     page_title="the Anthill | GridHive",
-    page_icon="⚡",
+    page_icon="âš¡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -330,9 +330,9 @@ st.markdown("""
 
 st.markdown(
     '<div class="status-strip">'
-    'DEMONSTRATION MODE &nbsp;·&nbsp; '
-    f'Category {category} &nbsp;·&nbsp; '
-    f'{html.escape(track)} &nbsp;·&nbsp; '
+    'DEMONSTRATION MODE &nbsp;Â·&nbsp; '
+    f'Category {category} &nbsp;Â·&nbsp; '
+    f'{html.escape(track)} &nbsp;Â·&nbsp; '
     'All grid data and storm effects are simulated'
     '</div>',
     unsafe_allow_html=True
@@ -359,10 +359,20 @@ def asset_map(height=510):
     m = folium.Map(
         location=[28.05, -81.55],
         zoom_start=6.45,
-        tiles="CartoDB dark_matter",
+        tiles="OpenStreetMap",
         control_scale=True,
         prefer_canvas=True
     )
+
+    m.get_root().header.add_child(folium.Element("""
+    <style>
+    .leaflet-tile-pane {
+        filter: grayscale(100%) invert(100%)
+                hue-rotate(180deg) brightness(85%)
+                contrast(95%);
+    }
+    </style>
+    """))
 
     Fullscreen(position="topright").add_to(m)
 
@@ -445,7 +455,7 @@ def asset_detail(asset_id):
     st.markdown(f"**{n['name']}**")
 
     st.caption(
-        f"{n['region']} · {n['kind']} · {n['id']}"
+        f"{n['region']} Â· {n['kind']} Â· {n['id']}"
     )
 
     a, b = st.columns(2)
@@ -457,7 +467,7 @@ def asset_detail(asset_id):
     )
 
     st.write(
-        f"Criticality: **{n['critical']}/100** · "
+        f"Criticality: **{n['critical']}/100** Â· "
         "Unique service customers: "
         f"**{n['customers']:,}**"
     )
@@ -562,7 +572,7 @@ if page == "Overview":
 
         for event in storage.events()[:3]:
             st.caption(
-                f"{event['created_at']} · "
+                f"{event['created_at']} Â· "
                 f"{event['category']}"
             )
             st.write(event["message"])
@@ -615,7 +625,7 @@ elif page == "Mission Control":
 
     st.progress(
         step / 6,
-        text=f"Stage {step}/6 · {labels[step]}"
+        text=f"Stage {step}/6 Â· {labels[step]}"
     )
 
     st.markdown(f"### {labels[step]}")
@@ -1002,11 +1012,11 @@ elif page == "Inspections":
             )
 
             with st.expander(
-                f"#{rec['id']} · {name} · {status}"
+                f"#{rec['id']} Â· {name} Â· {status}"
             ):
                 st.caption(
-                    f"{rec['created_at']} · "
-                    f"{rec['source']} · "
+                    f"{rec['created_at']} Â· "
+                    f"{rec['source']} Â· "
                     f"severity {rec['severity']}/100"
                 )
 
@@ -1281,7 +1291,7 @@ elif page == "Digital Twin":
             {
                 "ID": n["id"],
                 "Asset": n["name"],
-                "Parent": n["parent"] or "—",
+                "Parent": n["parent"] or "â€”",
                 "Status": states[n["id"]]["status"],
                 "Customers": n["customers"]
             }
@@ -1414,8 +1424,8 @@ else:
 st.divider()
 
 st.caption(
-    "GRIDHIVE / THE ANTHILL V4 · "
-    "Educational prototype · "
-    "Synthetic assets and scenarios · "
+    "GRIDHIVE / THE ANTHILL V4 Â· "
+    "Educational prototype Â· "
+    "Synthetic assets and scenarios Â· "
     "Human review required"
 )
