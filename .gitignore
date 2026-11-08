@@ -7,3 +7,4 @@ data/
 .streamlit/secrets.toml
 .env
 *.log
+*.pyc
