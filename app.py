@@ -1,1114 +1,1279 @@
-"""GridHive - the Anthill V3.
-Synthetic HackSTEM hurricane-resilience demonstration.
-No live utility data or autonomous grid control.
-"""
+"""the Anthill V4 - GridHive educational prototype."""
 
-from __future__ import annotations
-
-import math
+import hashlib
+import html
 import os
-import sqlite3
-from datetime import datetime, timezone
 from io import BytesIO
 
+import folium
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from PIL import Image, ImageOps
+
+from folium.plugins import Fullscreen
+from PIL import Image, ImageOps, UnidentifiedImageError
+from streamlit_folium import st_folium
+
+import storage
+
+from gridhive_core import (
+    ASSETS,
+    TRACKS,
+    scenario,
+    outage_states,
+    affected_customers,
+    repair_plan,
+    verified_max,
+    summary
+)
 
 st.set_page_config(
     page_title="the Anthill | GridHive",
-    page_icon="🐞",
-    layout="wide"
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-NAVY = "#071724"
-PANEL = "#102B3D"
-CYAN = "#5CE6E2"
-WHITE = "#F3FAFF"
-MUTED = "#C9DEEB"
-RED = "#FF7A91"
-AMBER = "#F7BD67"
-GREEN = "#56D9B0"
-
-# ==========================================
-# DESIGN / HIGH CONTRAST THEME
-# ==========================================
+# Restrained engineering operations design.
+# No gradients, glowing panels, or stock images.
 
 st.markdown("""
 <style>
-:root {color-scheme: dark;}
+:root {
+    color-scheme: dark;
+}
 
 .stApp,
 [data-testid="stAppViewContainer"] {
-    background: #071724;
-    color: #F3FAFF;
+    background: #0D1822;
+    color: #F1F5F7;
 }
 
 [data-testid="stSidebar"] {
-    background: #0B2131;
-    border-right: 1px solid #2C5164;
+    background: #101F2B;
+    border-right: 1px solid #344B5A;
 }
 
-.stApp p,
-.stApp span,
-.stApp label,
-.stApp li,
-.stApp h1,
-.stApp h2,
-.stApp h3,
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span {
-    color: #F3FAFF;
-}
-
-[data-testid="stCaptionContainer"],
-.stCaption {
-    color: #C9DEEB !important;
+[data-testid="stHeader"] {
+    background: transparent;
 }
 
 [data-testid="stMetric"] {
-    background: #102B3D;
-    border: 1px solid #31566A;
-    border-radius: 12px;
-    padding: 16px;
+    background: #142633;
+    border: 1px solid #385063;
+    border-radius: 4px;
+    padding: 13px 16px;
 }
 
 [data-testid="stMetricLabel"] *,
 [data-testid="stMetricValue"] * {
-    color: #F3FAFF !important;
+    color: #F1F5F7 !important;
+}
+
+[data-testid="stCaptionContainer"] *,
+.stCaption {
+    color: #C4D3DE !important;
+}
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li {
+    line-height: 1.5;
+}
+
+.stApp h1,
+.stApp h2,
+.stApp h3 {
+    color: #F1F5F7;
+    letter-spacing: -.02em;
+}
+
+.stApp h1 {
+    font-size: 1.8rem;
+}
+
+.stApp h2 {
+    font-size: 1.35rem;
+}
+
+.stApp h3 {
+    font-size: 1.1rem;
 }
 
 [data-baseweb="select"] > div,
 [data-baseweb="input"] > div,
 textarea,
-[data-testid="stNumberInput"] input {
-    background: #153549 !important;
-    color: #FFFFFF !important;
-    border-color: #61899C !important;
+input {
+    background-color: #193141 !important;
+    color: #F5FAFD !important;
+    border-color: #648296 !important;
 }
 
-input,
-textarea,
-[role="option"],
-[role="listbox"] {
-    color: #FFFFFF !important;
+[data-baseweb="popover"] [role="listbox"],
+[data-baseweb="popover"] [role="option"] {
+    background: #193141 !important;
+    color: #F5FAFD !important;
 }
 
-[data-baseweb="popover"] {
-    background: #153549 !important;
+[data-baseweb="popover"] [role="option"]:hover {
+    background: #315367 !important;
 }
 
-button[kind="primary"] {
-    background: #007E92 !important;
-    color: #FFFFFF !important;
-    border: 1px solid #6EEAE6 !important;
+[data-testid="stDataFrame"] {
+    border: 1px solid #385063;
 }
 
-button[kind="secondary"] {
-    background: #173B50 !important;
-    color: #FFFFFF !important;
-    border: 1px solid #739CAF !important;
+.stButton button {
+    border-radius: 4px;
+    font-weight: 600;
 }
 
-button[kind="primary"] *,
-button[kind="secondary"] * {
-    color: #FFFFFF !important;
+.stButton button[kind="primary"] {
+    background: #147B89;
+    color: #FFFFFF;
+    border: 1px solid #72D7D5;
 }
 
-button:focus-visible,
-input:focus-visible {
-    outline: 3px solid #5CE6E2 !important;
+.stButton button[kind="secondary"] {
+    background: #203A4C;
+    color: #FFFFFF;
+    border: 1px solid #7895A5;
 }
 
-button[data-baseweb="tab"] {
-    color: #D5EAF4 !important;
+.stButton button:focus-visible {
+    outline: 3px solid #8FE2E0;
 }
 
-button[data-baseweb="tab"][aria-selected="true"] {
-    color: #5CE6E2 !important;
-    border-bottom-color: #5CE6E2 !important;
-}
-
-[data-testid="stDataFrame"],
-[data-testid="stTable"] {
-    border: 1px solid #31566A;
-    border-radius: 10px;
-}
-
-.hero {
-    background: linear-gradient(115deg,#103248,#0B1D2D);
-    border: 1px solid #34748A;
-    padding: 22px 26px;
-    border-radius: 16px;
-    margin-bottom: 18px;
-}
-
-.hero h1 {
-    color: #F3FAFF !important;
-    font-size: 2.25rem;
-    margin: 0;
-}
-
-.hero p {
-    color: #C9DEEB !important;
-    margin: 5px 0 0;
-}
-
-.eyebrow {
-    color: #5CE6E2 !important;
+.app-kicker {
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: .15em;
-    font-size: .76rem;
+    letter-spacing: .13em;
+    color: #83D5D5;
 }
 
-.note {
-    background: #12374A;
-    border-left: 4px solid #5CE6E2;
-    padding: 12px 16px;
-    border-radius: 8px;
-    color: #F3FAFF;
+.app-heading {
+    border-bottom: 1px solid #344B5A;
+    padding-bottom: 13px;
+    margin-bottom: 20px;
+}
+
+.app-heading h1 {
+    margin: 3px 0 4px;
+    font-weight: 650;
+}
+
+.app-subtitle {
+    color: #D0DCE4;
+    font-size: 14px;
+}
+
+.status-strip {
+    border: 1px solid #476071;
+    background: #172B39;
+    padding: 10px 13px;
+    border-radius: 4px;
+    color: #E6F2F6;
+    font-size: 13px;
+    margin-bottom: 17px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# SYNTHETIC INFRASTRUCTURE DATA
-# ==========================================
-
-ASSETS = [
-    dict(
-        id="S01", name="Miami Demo Substation",
-        kind="Substation", parent=None,
-        lat=25.780, lon=-80.255, x=1, y=5,
-        customers=0, base=19, wind=.95,
-        flood=.85, critical=95, hours=10
-    ),
-    dict(
-        id="F01", name="Doral Demo Feeder",
-        kind="Feeder", parent="S01",
-        lat=25.803, lon=-80.356, x=2, y=6,
-        customers=3900, base=23, wind=.83,
-        flood=.55, critical=78, hours=6
-    ),
-    dict(
-        id="T01", name="Sweetwater Demo Transformer",
-        kind="Transformer", parent="F01",
-        lat=25.764, lon=-80.370, x=3, y=7,
-        customers=740, base=14, wind=.68,
-        flood=.48, critical=65, hours=4
-    ),
-    dict(
-        id="T02", name="Westchester Demo Transformer",
-        kind="Transformer", parent="F01",
-        lat=25.750, lon=-80.305, x=3, y=5.3,
-        customers=620, base=16, wind=.76,
-        flood=.58, critical=75, hours=5
-    ),
-    dict(
-        id="F02", name="Little Havana Demo Feeder",
-        kind="Feeder", parent="S01",
-        lat=25.765, lon=-80.220, x=2, y=3.6,
-        customers=3100, base=21, wind=.91,
-        flood=.73, critical=86, hours=7
-    ),
-    dict(
-        id="T03", name="Brickell Demo Transformer",
-        kind="Transformer", parent="F02",
-        lat=25.760, lon=-80.192, x=3, y=3.0,
-        customers=890, base=18, wind=.93,
-        flood=.95, critical=88, hours=5
-    ),
-    dict(
-        id="S02", name="North Miami Demo Substation",
-        kind="Substation", parent=None,
-        lat=25.888, lon=-80.205, x=1, y=1.6,
-        customers=0, base=15, wind=.89,
-        flood=.72, critical=90, hours=11
-    ),
-    dict(
-        id="F03", name="North Miami Demo Feeder",
-        kind="Feeder", parent="S02",
-        lat=25.899, lon=-80.175, x=2, y=1.7,
-        customers=2600, base=17, wind=.87,
-        flood=.77, critical=76, hours=6
-    ),
-    dict(
-        id="T04", name="Biscayne Demo Transformer",
-        kind="Transformer", parent="F03",
-        lat=25.843, lon=-80.178, x=3, y=1.4,
-        customers=550, base=15, wind=.92,
-        flood=.88, critical=70, hours=4
+try:
+    storage.init()
+except Exception:
+    st.error(
+        "Database unavailable. Check DATABASE_URL "
+        "or local SQLite file permissions."
     )
-]
+    st.stop()
 
-TRACKS = {
-    "Miami coast": (25.76, -80.20),
-    "Doral / inland": (25.80, -80.36),
-    "North Miami": (25.89, -80.20)
-}
+if "mission_step" not in st.session_state:
+    st.session_state.mission_step = 0
 
-COLORS = {
-    "Critical": RED,
-    "Elevated": AMBER,
-    "Low": GREEN
-}
+if "selected_asset" not in st.session_state:
+    st.session_state.selected_asset = "M-F"
 
-DB = os.path.join(
-    os.path.dirname(__file__),
-    "gridhive_demo.sqlite3"
+if "manual_failures" not in st.session_state:
+    st.session_state.manual_failures = []
+
+# --------------------------------------------------
+# NAVIGATION
+# --------------------------------------------------
+
+with st.sidebar:
+    st.markdown("**GRIDHIVE**")
+    st.caption("HACKSTEM / THE ANTHILL V4")
+
+    page = st.radio(
+        "WORKSPACE",
+        [
+            "Overview",
+            "Mission Control",
+            "Inspections",
+            "Restoration",
+            "Digital Twin",
+            "Impact",
+            "Activity"
+        ]
+    )
+
+    st.divider()
+    st.markdown("**SCENARIO CONTROLS**")
+
+    sidebar_category = st.slider(
+        "Storm category", 1, 5, 4
+    )
+
+    sidebar_track = st.selectbox(
+        "Landfall area",
+        list(TRACKS)
+    )
+
+    category = st.session_state.get(
+        "mission_category", sidebar_category
+    )
+
+    track = st.session_state.get(
+        "mission_track", sidebar_track
+    )
+
+    if "mission_category" in st.session_state:
+        st.caption(
+            "Mission Control is overriding "
+            "the scenario controls."
+        )
+
+    if st.button(
+        "Use sidebar scenario",
+        use_container_width=True
+    ):
+        st.session_state.pop(
+            "mission_category", None
+        )
+        st.session_state.pop(
+            "mission_track", None
+        )
+
+        storage.log(
+            "SCENARIO",
+            "Returned to manual scenario controls"
+        )
+        st.rerun()
+
+    st.divider()
+
+    st.caption(
+        "Synthetic grid assets. No operational "
+        "switching, live outage data, or "
+        "autonomous dispatch."
+    )
+
+    if storage.DB_URL:
+        st.caption("Storage: PostgreSQL configured.")
+    else:
+        st.caption(
+            "Storage: local SQLite. "
+            "Cloud restarts may erase records."
+        )
+
+# --------------------------------------------------
+# COMPUTE SHARED SYSTEM STATE
+# --------------------------------------------------
+
+records = storage.list_inspections()
+
+nodes = scenario(
+    category,
+    track,
+    verified_max(records),
+    st.session_state.manual_failures
 )
 
-# ==========================================
-# INSPECTION DATABASE
-# ==========================================
+states = outage_states(nodes)
 
-def connection():
-    db = sqlite3.connect(DB, timeout=8)
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS inspections "
-        "(id INTEGER PRIMARY KEY, "
-        "asset_id TEXT NOT NULL, "
-        "damage INTEGER NOT NULL, "
-        "notes TEXT, photo BLOB, "
-        "created TEXT NOT NULL)"
+by_id = {
+    n["id"]: n for n in nodes
+}
+
+strategies = (
+    "Balanced",
+    "Customers first",
+    "Fastest restoration",
+    "Critical facilities"
+)
+
+plans = {
+    name: repair_plan(nodes, name)
+    for name in strategies
+}
+
+base_plan = plans["Balanced"]
+
+affected = affected_customers(nodes)
+
+failed_count = sum(
+    n["direct_failed"] for n in nodes
+)
+
+st.markdown("""
+<div class="app-heading">
+    <div class="app-kicker">
+        GRIDHIVE / RESILIENCE OPERATIONS
+    </div>
+    <h1>the Anthill</h1>
+    <div class="app-subtitle">
+        Infrastructure monitoring, inspection review,
+        and restoration decision support
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown(
+    '<div class="status-strip">'
+    'DEMONSTRATION MODE &nbsp;·&nbsp; '
+    f'Category {category} &nbsp;·&nbsp; '
+    f'{html.escape(track)} &nbsp;·&nbsp; '
+    'All grid data and storm effects are simulated'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+k1, k2, k3, k4 = st.columns(4)
+
+k1.metric("Grid assets", len(nodes))
+k2.metric("Direct failures", failed_count)
+k3.metric(
+    "Unique customers affected",
+    f"{affected:,}"
+)
+k4.metric(
+    "Pending inspections",
+    sum(not r["verified"] for r in records)
+)
+
+# --------------------------------------------------
+# REUSABLE COMPONENTS
+# --------------------------------------------------
+
+def asset_map(height=510):
+    m = folium.Map(
+        location=[28.05, -81.55],
+        zoom_start=6.45,
+        tiles="CartoDB dark_matter",
+        control_scale=True,
+        prefer_canvas=True
     )
-    db.commit()
-    return db
 
-
-def inspections():
-    with connection() as db:
-        return db.execute(
-            "SELECT id,asset_id,damage,notes,photo,created "
-            "FROM inspections ORDER BY id DESC LIMIT 50"
-        ).fetchall()
-
-
-def save_inspection(asset_id, damage, notes, photo):
-    with connection() as db:
-        db.execute(
-            "INSERT INTO inspections"
-            "(asset_id,damage,notes,photo,created) "
-            "VALUES (?,?,?,?,?)",
-            (
-                asset_id,
-                damage,
-                notes,
-                photo,
-                datetime.now(timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M UTC"
-                )
-            )
-        )
-        db.commit()
-
-
-def reset_inspections():
-    with connection() as db:
-        db.execute("DELETE FROM inspections")
-        db.commit()
-
-
-def process_photo(upload):
-    if upload is None:
-        return None
-
-    raw = upload.getvalue()
-
-    if len(raw) > 5_000_000:
-        raise ValueError("Photo must be smaller than 5 MB.")
-
-    try:
-        with Image.open(BytesIO(raw)) as source:
-            if (
-                source.format not in ("JPEG", "PNG")
-                or source.width * source.height > 12_000_000
-            ):
-                raise ValueError(
-                    "Use a JPEG/PNG smaller than 12 megapixels."
-                )
-
-            img = ImageOps.exif_transpose(source)
-            img.thumbnail((1200, 1200))
-
-            out = BytesIO()
-            img.convert("RGB").save(
-                out, "JPEG", quality=83
-            )
-            return out.getvalue()
-
-    except (OSError, Image.DecompressionBombError) as exc:
-        raise ValueError(
-            "Could not read the image safely."
-        ) from exc
-
-
-# ==========================================
-# HURRICANE SIMULATION + RESTORATION MODEL
-# ==========================================
-
-def model(category, track, faults, records):
-    lat0, lon0 = TRACKS[track]
-
-    observed = {}
-
-    for _, asset_id, damage, *_ in records:
-        observed[asset_id] = max(
-            observed.get(asset_id, 0),
-            damage
-        )
-
-    nodes = []
-    by_id = {}
-
-    for a in ASSETS:
-        distance = math.hypot(
-            (a["lat"] - lat0) * 111,
-            (a["lon"] - lon0) * 100
-        )
-
-        exposure = max(0, 1 - distance / 45)
-
-        weather = category * (
-            a["wind"] * 4.4 + a["flood"] * 3.6
-        ) * (0.28 + 0.72 * exposure)
-
-        risk = min(
-            100,
-            round(
-                max(
-                    a["base"] + weather,
-                    observed.get(a["id"], 0)
-                ),
-                1
-            )
-        )
-
-        failed = bool(
-            faults and (
-                risk >= 77
-                or observed.get(a["id"], 0) >= 85
-            )
-        )
-
-        parent_outage = bool(
-            a["parent"]
-            and by_id[a["parent"]]["offline"]
-        )
-
-        offline = failed or parent_outage
-
-        band = (
-            "Critical" if risk >= 75
-            else "Elevated" if risk >= 48
-            else "Low"
-        )
-
-        node = dict(
-            a,
-            risk=risk,
-            failed=failed,
-            offline=offline,
-            band=band,
-            status=(
-                "Direct failure" if failed
-                else "Upstream outage" if offline
-                else "Energized"
-            )
-        )
-
-        nodes.append(node)
-        by_id[a["id"]] = node
-
-    maximum = max(
-        n["customers"] for n in nodes
-    ) or 1
-
-    for n in nodes:
-        customer_factor = (
-            100 * n["customers"] / maximum
-        )
-
-        speed_factor = max(
-            0,
-            100 - 100 * n["hours"] / 18
-        )
-
-        n["priority"] = round(
-            min(
-                100,
-                .38 * n["risk"]
-                + .25 * customer_factor
-                + .27 * n["critical"]
-                + .10 * speed_factor
-                + (12 if n["failed"] else 0)
-            ),
-            1
-        )
-
-        n["estimated_hours"] = round(
-            n["hours"] + category * .45,
-            1
-        )
-
-    return nodes
-
-
-# ==========================================
-# CHART AND MAP DESIGN
-# ==========================================
-
-def chart_theme(fig, height=420):
-    fig.update_layout(
-        height=height,
-        paper_bgcolor=PANEL,
-        plot_bgcolor=PANEL,
-        font=dict(color=WHITE, size=12),
-        margin=dict(l=12, r=12, t=30, b=15),
-        legend=dict(
-            font=dict(color=WHITE),
-            bgcolor="rgba(9,25,37,.95)"
-        ),
-        hoverlabel=dict(
-            bgcolor="#17394C",
-            font=dict(color=WHITE)
-        )
-    )
-    return fig
-
-
-def risk_map(nodes):
-    fig = go.Figure()
-    by_id = {n["id"]: n for n in nodes}
+    Fullscreen(position="topright").add_to(m)
 
     for n in nodes:
         if n["parent"]:
-            p = by_id[n["parent"]]
+            parent = by_id[n["parent"]]
 
+            folium.PolyLine(
+                [
+                    [parent["lat"], parent["lon"]],
+                    [n["lat"], n["lon"]]
+                ],
+                color="#7BA7B8",
+                weight=2,
+                opacity=.7
+            ).add_to(m)
+
+    for n in nodes:
+        state = states[n["id"]]["status"]
+
+        color = (
+            "#EE6673" if state == "Failed"
+            else "#F1BD69"
+            if state == "Upstream outage"
+            else "#57C6AD"
+        )
+
+        label = (
+            f"{n['name']} | "
+            f"Risk {n['risk']}/100 | {state}"
+        )
+
+        folium.CircleMarker(
+            [n["lat"], n["lon"]],
+            radius=9 if n["kind"] == "Substation" else 7,
+            color="#E8F1F4",
+            weight=1,
+            fill=True,
+            fill_color=color,
+            fill_opacity=.95,
+            tooltip=label,
+            popup=folium.Popup(
+                html.escape(label),
+                max_width=300
+            )
+        ).add_to(m)
+
+    result = st_folium(
+        m,
+        height=height,
+        use_container_width=True,
+        key=f"map_{page}",
+        returned_objects=["last_object_clicked"]
+    )
+
+    click = (
+        result.get("last_object_clicked")
+        if result else None
+    )
+
+    if click:
+        nearest = min(
+            nodes,
+            key=lambda n: (
+                (n["lat"] - click["lat"]) ** 2
+                + (n["lon"] - click["lng"]) ** 2
+            )
+        )
+
+        if (
+            abs(nearest["lat"] - click["lat"]) < .015
+            and abs(nearest["lon"] - click["lng"]) < .015
+        ):
+            st.session_state.selected_asset = nearest["id"]
+
+
+def asset_detail(asset_id):
+    n = by_id[asset_id]
+
+    st.markdown(f"**{n['name']}**")
+
+    st.caption(
+        f"{n['region']} · {n['kind']} · {n['id']}"
+    )
+
+    a, b = st.columns(2)
+
+    a.metric("Risk / 100", n["risk"])
+    b.metric(
+        "Status",
+        states[asset_id]["status"]
+    )
+
+    st.write(
+        f"Criticality: **{n['critical']}/100** · "
+        "Unique service customers: "
+        f"**{n['customers']:,}**"
+    )
+
+    st.caption(
+        "Asset names and locations are "
+        "fictionalized demonstration examples."
+    )
+
+
+def event_table():
+    events = storage.events()
+
+    if events:
+        df = pd.DataFrame(events)
+
+        df = df[
+            ["created_at", "category", "message"]
+        ].rename(columns={
+            "created_at": "UTC time",
+            "category": "Event",
+            "message": "Details"
+        })
+
+        st.dataframe(
+            df,
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.info(
+            "No events yet. Run Mission Control "
+            "or submit an inspection."
+        )
+
+
+# ==================================================
+# OVERVIEW
+# ==================================================
+
+if page == "Overview":
+    left, right = st.columns(
+        [1.8, 1],
+        gap="large"
+    )
+
+    with left:
+        st.subheader(
+            "Florida infrastructure overview"
+        )
+
+        asset_map()
+
+        st.caption(
+            "Click a marker to inspect its "
+            "modeled condition. Markers show "
+            "failed, upstream-outage, or "
+            "energized status."
+        )
+
+    with right:
+        st.subheader("Selected asset")
+
+        st.session_state["selected_asset_widget"] = (
+            st.session_state.selected_asset
+        )
+
+        selected = st.selectbox(
+            "Asset",
+            [n["id"] for n in nodes],
+            key="selected_asset_widget",
+            format_func=lambda x: by_id[x]["name"]
+        )
+
+        st.session_state.selected_asset = selected
+
+        asset_detail(selected)
+
+        st.divider()
+        st.subheader("Next recommended repair")
+
+        if base_plan["schedule"]:
+            top = base_plan["schedule"][0]
+
+            st.write(f"**{top['asset']}**")
+
+            st.metric(
+                "Customers restored by this repair",
+                f"{top['restored']:,}"
+            )
+
+            st.caption(
+                "Single-crew sequential repair "
+                "assumption. Confirm field conditions."
+            )
+        else:
+            st.success(
+                "No direct failures in this simulation."
+            )
+
+        st.subheader("Latest activity")
+
+        for event in storage.events()[:3]:
+            st.caption(
+                f"{event['created_at']} · "
+                f"{event['category']}"
+            )
+            st.write(event["message"])
+
+    st.subheader("Risk register")
+
+    df = pd.DataFrame([
+        {
+            "Asset": n["name"],
+            "Region": n["region"],
+            "Risk": n["risk"],
+            "Status": states[n["id"]]["status"],
+            "Customers served": n["customers"]
+        }
+        for n in nodes
+    ]).sort_values(
+        "Risk", ascending=False
+    )
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+# ==================================================
+# MISSION CONTROL
+# ==================================================
+
+elif page == "Mission Control":
+    st.subheader("Guided hurricane response")
+
+    st.write(
+        "A repeatable six-stage demonstration. "
+        "Each action updates the same scenario, "
+        "inspection records, and restoration model."
+    )
+
+    labels = [
+        "Ready",
+        "Storm launched",
+        "Risk assessed",
+        "Inspection received",
+        "Inspection approved",
+        "Restoration planned",
+        "Impact brief ready"
+    ]
+
+    step = st.session_state.mission_step
+
+    st.progress(
+        step / 6,
+        text=f"Stage {step}/6 · {labels[step]}"
+    )
+
+    st.markdown(f"### {labels[step]}")
+
+    if step == 0:
+        st.write(
+            "Begin a Category 4 Miami coastal scenario."
+        )
+
+        if st.button(
+            "Launch hurricane simulation",
+            type="primary"
+        ):
+            st.session_state.mission_category = 4
+            st.session_state.mission_track = "Miami coast"
+            st.session_state.mission_step = 1
+
+            storage.log(
+                "STORM",
+                "Category 4 Miami coastal "
+                "simulation launched"
+            )
+            st.rerun()
+
+    elif step == 1:
+        st.write(
+            f"The scenario affects **{affected:,}** "
+            "unique modeled customers."
+        )
+
+        if st.button(
+            "Assess infrastructure risk",
+            type="primary"
+        ):
+            st.session_state.mission_step = 2
+
+            storage.log(
+                "RISK",
+                f"Exposure assessed: "
+                f"{failed_count} direct failures"
+            )
+            st.rerun()
+
+    elif step == 2:
+        st.write(
+            "Create a clearly simulated TerraBeetle "
+            "inspection. No live robot or camera "
+            "is implied."
+        )
+
+        if st.button(
+            "Receive simulated TerraBeetle inspection",
+            type="primary"
+        ):
+            storage.add_inspection(
+                "M-A",
+                94,
+                "Simulated TerraBeetle",
+                "Synthetic demonstration: visible "
+                "infrastructure damage requiring review."
+            )
+
+            st.session_state.mission_inspection = (
+                storage.list_inspections()[0]["id"]
+            )
+
+            st.session_state.mission_step = 3
+            st.rerun()
+
+    elif step == 3:
+        st.warning(
+            "Inspection is pending human verification "
+            "and has not changed modeled risk."
+        )
+
+        if st.button(
+            "Approve demo inspection as reviewer",
+            type="primary"
+        ):
+            storage.approve(
+                st.session_state.mission_inspection
+            )
+
+            st.session_state.mission_step = 4
+            st.rerun()
+
+    elif step == 4:
+        st.write(
+            "Approved severity now influences "
+            "the risk model."
+        )
+
+        if st.button(
+            "Calculate restoration plan",
+            type="primary"
+        ):
+            storage.log(
+                "RESTORATION",
+                "Human-review restoration "
+                "options calculated"
+            )
+
+            st.session_state.mission_step = 5
+            st.rerun()
+
+    elif step == 5:
+        st.write(summary(nodes, base_plan))
+
+        if st.button(
+            "Generate community impact brief",
+            type="primary"
+        ):
+            storage.log(
+                "IMPACT",
+                "Illustrative baseline: "
+                f"{base_plan['customer_hours']:,} "
+                "customer-outage hours"
+            )
+
+            st.session_state.mission_step = 6
+            st.rerun()
+
+    else:
+        st.success(
+            "Full workflow completed. "
+            "Use Overview, Restoration, and Impact "
+            "to show the linked results."
+        )
+
+        st.code(
+            summary(nodes, base_plan),
+            language=None
+        )
+
+    st.divider()
+
+    if st.button(
+        "Reset shared demo data and mission",
+        help="Deletes all demo inspection "
+             "and activity records."
+    ):
+        storage.reset()
+
+        for key in (
+            "mission_category",
+            "mission_track",
+            "mission_inspection",
+            "ai_note",
+            "image_sig"
+        ):
+            st.session_state.pop(key, None)
+
+        st.session_state.mission_step = 0
+        st.session_state.manual_failures = []
+        st.rerun()
+
+    st.subheader("Current scenario")
+
+    a, b, c = st.columns(3)
+
+    a.metric("Storm", f"Category {category}")
+    b.metric("Modeled failures", failed_count)
+    c.metric(
+        "Affected customers",
+        f"{affected:,}"
+    )
+
+# ==================================================
+# INSPECTIONS + CAMERA + OPTIONAL GEMINI
+# ==================================================
+
+elif page == "Inspections":
+    st.subheader(
+        "Inspection intake and review"
+    )
+
+    st.write(
+        "Use your browser camera or upload an image. "
+        "AI observations are optional and never "
+        "automatically verified."
+    )
+
+    left, right = st.columns(
+        [1, 1],
+        gap="large"
+    )
+
+    with left:
+        asset_id = st.selectbox(
+            "Inspected asset",
+            [n["id"] for n in nodes],
+            format_func=lambda x: by_id[x]["name"]
+        )
+
+        camera = st.camera_input(
+            "Capture using browser camera"
+        )
+
+        upload = st.file_uploader(
+            "Or upload JPEG/PNG (5 MB maximum)",
+            type=["jpg", "jpeg", "png"]
+        )
+
+        chosen_file = camera or upload
+
+        source = (
+            "Browser camera" if camera
+            else "Uploaded image" if upload
+            else "Manual observation"
+        )
+
+        severity = st.slider(
+            "Observed damage severity / 100 "
+            "(human estimate)",
+            0, 100, 65
+        )
+
+        notes = st.text_area(
+            "Field notes",
+            placeholder=(
+                "Describe visible damage and uncertainty. "
+                "Do not enter confidential utility data."
+            )
+        )
+
+        image_bytes = None
+
+        if chosen_file is not None:
+            raw = chosen_file.getvalue()
+
+            if len(raw) > 5_000_000:
+                st.error(
+                    "Image exceeds 5 MB."
+                )
+            else:
+                try:
+                    with Image.open(BytesIO(raw)) as im:
+                        if (
+                            im.format not in ("JPEG", "PNG")
+                            or im.width * im.height
+                            > 12_000_000
+                        ):
+                            raise ValueError(
+                                "Only JPEG/PNG images up "
+                                "to 12 megapixels supported."
+                            )
+
+                        clean = ImageOps.exif_transpose(im)
+                        clean.thumbnail((1000, 1000))
+
+                        buffer = BytesIO()
+
+                        clean.convert("RGB").save(
+                            buffer,
+                            "JPEG",
+                            quality=82
+                        )
+
+                        image_bytes = buffer.getvalue()
+
+                    st.image(
+                        image_bytes,
+                        caption="Prepared inspection image",
+                        width=320
+                    )
+
+                except (
+                    ValueError,
+                    UnidentifiedImageError,
+                    OSError,
+                    Image.DecompressionBombError
+                ) as exc:
+                    st.error(
+                        f"Invalid image: {exc}"
+                    )
+
+        fingerprint = (
+            hashlib.sha256(image_bytes).hexdigest()
+            if image_bytes else "none"
+        )
+
+        if (
+            st.session_state.get("image_sig")
+            != fingerprint
+        ):
+            st.session_state.image_sig = fingerprint
+            st.session_state.ai_note = ""
+
+        try:
+            key = (
+                os.getenv("GEMINI_API_KEY")
+                or st.secrets.get("GEMINI_API_KEY", "")
+            )
+        except Exception:
+            key = os.getenv("GEMINI_API_KEY", "")
+
+        if st.button(
+            "Analyze image with Gemini (optional)",
+            disabled=not (image_bytes and key)
+        ):
+            try:
+                from google import genai
+                from google.genai import types
+
+                client = genai.Client(api_key=key)
+
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[
+                        "This is an electric-grid inspection "
+                        "training image. Describe only visible "
+                        "features, possible concerns, and "
+                        "uncertainties in under 120 words. "
+                        "Do not claim confirmed damage or "
+                        "prescribe electrical switching.",
+                        types.Part.from_bytes(
+                            data=image_bytes,
+                            mime_type="image/jpeg"
+                        )
+                    ]
+                )
+
+                st.session_state.ai_note = (
+                    response.text
+                    or "No observation returned"
+                )[:1500]
+
+            except Exception:
+                st.error(
+                    "Image analysis unavailable. "
+                    "Manual inspection still works."
+                )
+
+        if not key:
+            st.caption(
+                "Set GEMINI_API_KEY as a server secret "
+                "to enable optional AI observations."
+            )
+
+        if st.session_state.get("ai_note"):
+            st.info(
+                "Unverified AI observation: "
+                + st.session_state.ai_note
+            )
+
+        if st.button(
+            "Submit for human verification",
+            type="primary"
+        ):
+            storage.add_inspection(
+                asset_id,
+                severity,
+                source,
+                notes,
+                image_bytes,
+                st.session_state.get("ai_note", "")
+            )
+
+            st.session_state.ai_note = ""
+
+            st.success(
+                "Inspection saved as PENDING. "
+                "It will not change modeled risk "
+                "until approved."
+            )
+            st.rerun()
+
+    with right:
+        st.subheader("Review queue")
+
+        if not records:
+            st.info("No inspection records yet.")
+
+        for rec in records[:15]:
+            status = (
+                "VERIFIED" if rec["verified"]
+                else "PENDING"
+            )
+
+            name = by_id.get(
+                rec["asset_id"], {}
+            ).get(
+                "name", rec["asset_id"]
+            )
+
+            with st.expander(
+                f"#{rec['id']} · {name} · {status}"
+            ):
+                st.caption(
+                    f"{rec['created_at']} · "
+                    f"{rec['source']} · "
+                    f"severity {rec['severity']}/100"
+                )
+
+                st.write(
+                    rec["notes"] or "No notes"
+                )
+
+                if rec["ai_note"]:
+                    st.write(
+                        "**AI observation (unverified):** "
+                        + rec["ai_note"]
+                    )
+
+                if rec["image"]:
+                    st.image(
+                        bytes(rec["image"]),
+                        width=300
+                    )
+
+                if (
+                    not rec["verified"]
+                    and st.button(
+                        "Verify observation",
+                        key=f"approve_{rec['id']}"
+                    )
+                ):
+                    storage.approve(rec["id"])
+                    st.rerun()
+
+    st.caption(
+        "Browser camera uses your device camera, "
+        "not a Raspberry Pi CSI or ESP32 camera stream. "
+        "Dedicated robot-camera ingestion requires "
+        "a separate hardware integration."
+    )
+
+# ==================================================
+# RESTORATION STRATEGY COMPARISON
+# ==================================================
+
+elif page == "Restoration":
+    st.subheader(
+        "Restoration strategy comparison"
+    )
+
+    st.write(
+        "Compare four transparent heuristics using "
+        "the same simulated faults and one repair "
+        "crew working sequentially."
+    )
+
+    comparison = pd.DataFrame([
+        {
+            "Strategy": name,
+            "Customer-outage hours": plan[
+                "customer_hours"
+            ],
+            "Total repair hours": plan[
+                "total_hours"
+            ]
+        }
+        for name, plan in plans.items()
+    ])
+
+    st.dataframe(
+        comparison,
+        hide_index=True,
+        use_container_width=True
+    )
+
+    fig = go.Figure(
+        go.Bar(
+            x=comparison["Strategy"],
+            y=comparison["Customer-outage hours"],
+            marker_color="#58B9BD"
+        )
+    )
+
+    fig.update_layout(
+        paper_bgcolor="#142633",
+        plot_bgcolor="#142633",
+        font_color="#E8F1F5",
+        margin=dict(l=20, r=10, t=20, b=20),
+        height=300
+    )
+
+    fig.update_yaxes(
+        gridcolor="#3C5363",
+        title="Customer-outage hours"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+    strategy = st.selectbox(
+        "View repair schedule",
+        list(plans)
+    )
+
+    plan = plans[strategy]
+
+    if plan["schedule"]:
+        schedule_df = pd.DataFrame(
+            plan["schedule"]
+        ).rename(columns={
+            "asset": "Repair target",
+            "hours": "Duration (h)",
+            "restored": "Customers restored",
+            "finished_h": "Finish (h)",
+            "affected_after": "Customers still out"
+        }).drop(columns="id")
+
+        st.dataframe(
+            schedule_df,
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.success(
+            "No direct failures to repair."
+        )
+
+    st.info(summary(nodes, plan))
+
+    st.caption(
+        "Customer counts exist only at terminal "
+        "service zones. An upstream repair only "
+        "restores customers when no remaining "
+        "downstream failure blocks service."
+    )
+
+# ==================================================
+# GRID DIGITAL TWIN
+# ==================================================
+
+elif page == "Digital Twin":
+    st.subheader(
+        "Grid dependency model"
+    )
+
+    st.write(
+        "Explore the parent-child network. "
+        "This models outage propagation, "
+        "not electrical power flow."
+    )
+
+    region = st.selectbox(
+        "Network region",
+        list(dict.fromkeys(
+            n["region"] for n in nodes
+        ))
+    )
+
+    subset = [
+        n for n in nodes
+        if n["region"] == region
+    ]
+
+    xs = {}
+    ys = {}
+
+    for n in subset:
+        if n["kind"] == "Substation":
+            xs[n["id"]] = 1
+            ys[n["id"]] = 3
+
+        elif n["kind"] == "Feeder":
+            xs[n["id"]] = 1
+            ys[n["id"]] = 2
+
+        else:
+            xs[n["id"]] = (
+                .35 if n["id"] == "M-A"
+                else 1.65 if n["id"] == "M-B"
+                else 1
+            )
+            ys[n["id"]] = 1
+
+    fig = go.Figure()
+
+    for n in subset:
+        if n["parent"]:
             fig.add_trace(
-                go.Scattermap(
-                    lat=[p["lat"], n["lat"]],
-                    lon=[p["lon"], n["lon"]],
+                go.Scatter(
+                    x=[
+                        xs[n["parent"]],
+                        xs[n["id"]]
+                    ],
+                    y=[
+                        ys[n["parent"]],
+                        ys[n["id"]]
+                    ],
                     mode="lines",
                     line=dict(
-                        width=2,
-                        color="#79C3D7"
+                        color=(
+                            "#E5B56C"
+                            if states[n["id"]]["offline"]
+                            else "#6C9FA9"
+                        ),
+                        width=3
                     ),
                     showlegend=False,
                     hoverinfo="skip"
                 )
             )
 
-    for band in ("Critical", "Elevated", "Low"):
-        subset = [
-            n for n in nodes
-            if n["band"] == band
-        ]
+    for n in subset:
+        state = states[n["id"]]["status"]
 
-        if subset:
-            fig.add_trace(
-                go.Scattermap(
-                    lat=[n["lat"] for n in subset],
-                    lon=[n["lon"] for n in subset],
-                    mode="markers",
-                    name=band,
-                    marker=dict(
-                        size=15,
-                        color=COLORS[band]
-                    ),
-                    text=[
-                        f"{n['name']} | "
-                        f"{n['status']} | "
-                        f"Risk {n['risk']}"
-                        for n in subset
-                    ],
-                    hovertemplate="%{text}<extra></extra>"
+        color = (
+            "#EE6673" if state == "Failed"
+            else "#F1BD69"
+            if state == "Upstream outage"
+            else "#57C6AD"
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=[xs[n["id"]]],
+                y=[ys[n["id"]]],
+                mode="markers+text",
+                text=[n["id"]],
+                textposition="top center",
+                textfont=dict(
+                    color="#F1F5F7",
+                    size=14
+                ),
+                marker=dict(
+                    size=26,
+                    color=color,
+                    line=dict(
+                        width=2,
+                        color="#D9E7EC"
+                    )
+                ),
+                name=n["name"],
+                hovertemplate=(
+                    f"{n['name']}<br>{state}"
+                    "<extra></extra>"
                 )
             )
+        )
 
     fig.update_layout(
-        map=dict(
-            style="carto-darkmatter",
-            center=dict(
-                lat=25.81,
-                lon=-80.27
-            ),
-            zoom=9.2
-        )
-    )
-
-    return chart_theme(fig, 480)
-
-
-def twin_chart(nodes):
-    fig = go.Figure()
-    by_id = {n["id"]: n for n in nodes}
-
-    for n in nodes:
-        if n["parent"]:
-            p = by_id[n["parent"]]
-
-            fig.add_trace(
-                go.Scatter(
-                    x=[p["x"], n["x"]],
-                    y=[p["y"], n["y"]],
-                    mode="lines",
-                    line=dict(
-                        color=RED if n["offline"] else CYAN,
-                        width=3
-                    ),
-                    hoverinfo="skip",
-                    showlegend=False
-                )
-            )
-
-    for state, color in (
-        ("Direct failure", RED),
-        ("Upstream outage", AMBER),
-        ("Energized", GREEN)
-    ):
-        group = [
-            n for n in nodes
-            if n["status"] == state
-        ]
-
-        if group:
-            fig.add_trace(
-                go.Scatter(
-                    x=[n["x"] for n in group],
-                    y=[n["y"] for n in group],
-                    mode="markers+text",
-                    name=state,
-                    text=[n["id"] for n in group],
-                    textposition="top center",
-                    textfont=dict(
-                        color=WHITE,
-                        size=12
-                    ),
-                    marker=dict(
-                        size=25,
-                        color=color,
-                        line=dict(
-                            color=NAVY,
-                            width=2
-                        )
-                    ),
-                    customdata=[
-                        n["name"] for n in group
-                    ],
-                    hovertemplate=(
-                        "%{customdata}<extra></extra>"
-                    )
-                )
-            )
-
-    fig.update_xaxes(
-        visible=False,
-        range=[.4, 3.6]
-    )
-
-    fig.update_yaxes(
-        visible=False,
-        range=[.3, 8.0]
-    )
-
-    return chart_theme(fig, 460)
-
-
-# ==========================================
-# EXPLAINABLE RECOMMENDATIONS
-# ==========================================
-
-def explain(n):
-    return (
-        f"Risk {n['risk']}/100; "
-        f"serves {n['customers']:,} simulated customers; "
-        f"criticality {n['critical']}/100; "
-        f"estimated repair {n['estimated_hours']} h. "
-        f"Status: {n['status']}. "
-        f"Priority {n['priority']}/100. "
-        "Human engineering review is required "
-        "before any real dispatch."
-    )
-
-
-def briefing(nodes):
-    offline = [
-        n for n in nodes
-        if n["offline"] and n["customers"] > 0
-    ]
-
-    ranked = sorted(
-        nodes,
-        key=lambda n: n["priority"],
-        reverse=True
-    )
-
-    top = ranked[0]
-
-    return (
-        "ILLUSTRATIVE INCIDENT BRIEFING\n\n"
-        f"{len(offline)} customer-serving assets show "
-        "simulated outages; "
-        f"{sum(n['customers'] for n in offline):,} "
-        "customer groups are potentially affected.\n\n"
-        f"Highest-ranked asset: {top['name']} "
-        f"({top['priority']}/100). "
-        f"{explain(top)}\n\n"
-        "Next steps: verify field conditions, "
-        "check crew access and critical facilities, "
-        "review upstream dependencies, and obtain "
-        "human approval before dispatch."
-    )
-
-
-# ==========================================
-# SIDEBAR CONTROLS
-# ==========================================
-
-with st.sidebar:
-    st.markdown("### 🐞 GridHive")
-    st.caption("HACKSTEM · SYNTHETIC DEMONSTRATION")
-
-    category = st.slider(
-        "Hurricane category",
-        1, 5, 3,
-        key="category"
-    )
-
-    track = st.selectbox(
-        "Scenario landfall",
-        list(TRACKS),
-        key="track"
-    )
-
-    faults = st.toggle(
-        "Simulate grid failures",
-        value=True,
-        key="faults"
-    )
-
-    if st.button(
-        "Reset demo and inspections",
-        use_container_width=True
-    ):
-        reset_inspections()
-
-        for key in ("category", "track", "faults"):
-            st.session_state.pop(key, None)
-
-        st.rerun()
-
-    st.markdown("---")
-    st.caption(
-        "No live power-grid data or robot control. "
-        "Results are illustrative, not forecasts."
-    )
-
-
-records = inspections()
-nodes = model(category, track, faults, records)
-
-ranked = sorted(
-    nodes,
-    key=lambda n: n["priority"],
-    reverse=True
-)
-
-offline = [
-    n for n in nodes
-    if n["offline"] and n["customers"] > 0
-]
-
-affected = sum(
-    n["customers"] for n in offline
-)
-
-# ==========================================
-# COMMAND CENTER HEADER
-# ==========================================
-
-st.markdown("""
-<div class='hero'>
-    <div class='eyebrow'>
-        GRIDHIVE / OPERATIONS INTELLIGENCE
-    </div>
-    <h1>the Anthill</h1>
-    <p>
-        Hurricane resilience command center ·
-        inspection intelligence ·
-        restoration planning
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-st.info(
-    "Prototype mode: all asset locations, "
-    "failures, risk scores and economic "
-    "estimates are simulated."
-)
-
-m1, m2, m3, m4 = st.columns(4)
-
-m1.metric("Monitored assets", len(nodes))
-m2.metric(
-    "Critical-risk assets",
-    sum(n["band"] == "Critical" for n in nodes)
-)
-m3.metric(
-    "Affected service customers",
-    f"{affected:,}"
-)
-m4.metric(
-    "Inspections submitted",
-    len(records)
-)
-
-# ==========================================
-# SIX DASHBOARD SECTIONS
-# ==========================================
-
-(
-    overview,
-    storm_tab,
-    inspect_tab,
-    restore_tab,
-    twin_tab,
-    impact_tab
-) = st.tabs([
-    "Overview",
-    "Hurricane simulator",
-    "Robot inspections",
-    "Restoration AI",
-    "Grid digital twin",
-    "Community impact"
-])
-
-# 1. OVERVIEW
-
-with overview:
-    left, right = st.columns([1.65, 1])
-
-    with left:
-        st.subheader("Florida asset risk map")
-        st.plotly_chart(
-            risk_map(nodes),
-            use_container_width=True
-        )
-
-    with right:
-        st.subheader("Restoration priority queue")
-
-        queue = pd.DataFrame([
-            {
-                "Asset": n["name"],
-                "Risk": n["risk"],
-                "Priority": n["priority"],
-                "State": n["status"]
-            }
-            for n in ranked
-        ])
-
-        st.dataframe(
-            queue,
-            use_container_width=True,
-            hide_index=True,
-            height=465
-        )
-
-    st.subheader("Risk by infrastructure asset")
-
-    fig = go.Figure(
-        go.Bar(
-            x=[n["name"] for n in ranked],
-            y=[n["risk"] for n in ranked],
-            marker_color=[
-                COLORS[n["band"]] for n in ranked
-            ]
-        )
-    )
-
-    fig.update_yaxes(
-        range=[0, 100],
-        gridcolor="#31566A",
-        title="Risk score / 100"
-    )
-    fig.update_xaxes(tickangle=-30)
-
-    st.plotly_chart(
-        chart_theme(fig, 340),
-        use_container_width=True
-    )
-
-# 2. HURRICANE SIMULATOR
-
-with storm_tab:
-    st.subheader("Hurricane scenario engine")
-
-    st.write(
-        f"Current demonstration: **Category {category}**, "
-        f"approximate landfall **{track}**."
-    )
-
-    st.markdown(
-        "<div class='note'>Move the hurricane controls "
-        "in the sidebar to recalculate exposure, "
-        "synthetic failures and the repair queue.</div>",
-        unsafe_allow_html=True
-    )
-
-    trends = []
-
-    for cat in range(1, 6):
-        scenario = model(
-            cat, track, faults, records
-        )
-
-        trends.append({
-            "Category": f"Cat {cat}",
-            "Critical assets": sum(
-                n["band"] == "Critical"
-                for n in scenario
-            ),
-            "Affected customers": sum(
-                n["customers"]
-                for n in scenario
-                if n["offline"]
-            )
-        })
-
-    a, b = st.columns(2)
-
-    with a:
-        st.subheader("Simulated critical assets")
-        st.bar_chart(
-            pd.DataFrame(trends)
-            .set_index("Category")["Critical assets"],
-            color=CYAN
-        )
-
-    with b:
-        st.subheader("Simulated affected customers")
-        st.bar_chart(
-            pd.DataFrame(trends)
-            .set_index("Category")["Affected customers"],
-            color=AMBER
-        )
-
-    st.caption(
-        "Simplified distance-and-exposure scoring model. "
-        "Not a meteorological or utility reliability forecast."
-    )
-
-# 3. ROBOT INSPECTIONS
-
-with inspect_tab:
-    st.subheader(
-        "TerraBeetle / AeroTerra inspection intake"
-    )
-
-    st.write(
-        "Upload a photo from a camera or phone, "
-        "record the observed condition, "
-        "and update the priority queue."
-    )
-
-    with st.form(
-        "inspection_form",
-        clear_on_submit=True
-    ):
-        selected = st.selectbox(
-            "Infrastructure asset",
-            [n["name"] for n in nodes]
-        )
-
-        damage = st.slider(
-            "Confirmed damage severity (manual assessment)",
-            0, 100, 65
-        )
-
-        notes = st.text_area(
-            "Inspection notes",
-            placeholder=(
-                "Describe what was observed. "
-                "Do not enter sensitive utility information."
-            )
-        )
-
-        photo = st.file_uploader(
-            "Optional inspection image (JPEG/PNG, 5 MB max)",
-            type=["jpg", "jpeg", "png"]
-        )
-
-        submit = st.form_submit_button(
-            "Save inspection and update risk",
-            type="primary"
-        )
-
-    if submit:
-        try:
-            aid = next(
-                n["id"] for n in nodes
-                if n["name"] == selected
-            )
-
-            save_inspection(
-                aid,
-                damage,
-                notes[:1200],
-                process_photo(photo)
-            )
-
-            st.success(
-                "Inspection saved. Risk map and repair "
-                "priorities have been updated."
-            )
-
-            st.rerun()
-
-        except ValueError as exc:
-            st.error(str(exc))
-
-    if records:
-        st.subheader("Recent inspection reports")
-
-        lookup = {
-            n["id"]: n["name"]
-            for n in nodes
-        }
-
-        for ident, aid, sev, note, img, created in records[:8]:
-            with st.expander(
-                f"{created} · "
-                f"{lookup.get(aid, aid)} · "
-                f"severity {sev}"
-            ):
-                st.write(
-                    note or "No notes provided"
-                )
-
-                if img:
-                    st.image(img, width=360)
-    else:
-        st.caption(
-            "No inspections yet. Submit one to "
-            "demonstrate a dashboard update."
-        )
-
-# 4. RESTORATION AI / DECISION SUPPORT
-
-with restore_tab:
-    st.subheader(
-        "Explainable restoration recommendations"
-    )
-
-    st.caption(
-        "Priority = 38% risk + 25% customers "
-        "+ 27% criticality + 10% repair speed. "
-        "Direct failures receive a bonus."
-    )
-
-    asset = st.selectbox(
-        "Inspect priority reasoning",
-        [n["name"] for n in ranked]
-    )
-
-    chosen = next(
-        n for n in ranked
-        if n["name"] == asset
-    )
-
-    st.metric(
-        "Priority score",
-        f"{chosen['priority']}/100"
-    )
-
-    st.markdown(
-        f"<div class='note'>{explain(chosen)}</div>",
-        unsafe_allow_html=True
-    )
-
-    st.subheader("Incident briefing")
-
-    if st.button(
-        "Generate incident briefing",
-        type="primary"
-    ):
-        st.session_state["briefing"] = briefing(nodes)
-
-    st.text_area(
-        "Decision-support report",
-        value=st.session_state.get(
-            "briefing",
-            briefing(nodes)
+        height=380,
+        paper_bgcolor="#142633",
+        plot_bgcolor="#142633",
+        font_color="#E8F1F5",
+        xaxis=dict(
+            visible=False,
+            range=[-.25, 2.25]
         ),
-        height=215
-    )
-
-    st.caption(
-        "The default briefing is rule-based, "
-        "not an autonomous repair instruction."
-    )
-
-    key = os.getenv("GEMINI_API_KEY", "")
-
-    if key:
-        if st.button(
-            "Ask Gemini to summarize this scenario"
-        ):
-            try:
-                from google import genai
-
-                client = genai.Client(
-                    api_key=key
-                )
-
-                prompt = (
-                    "Summarize this synthetic hurricane-grid "
-                    "demonstration for judges in 150 words. "
-                    "Do not assert live measurements or give "
-                    "operational switching commands.\n"
-                    + briefing(nodes)
-                )
-
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt
-                )
-
-                st.session_state["gemini_briefing"] = (
-                    response.text or "No response"
-                )
-
-            except Exception as exc:
-                st.warning(
-                    "AI service unavailable: "
-                    f"{type(exc).__name__}. "
-                    "The rule-based briefing still works."
-                )
-
-        if st.session_state.get("gemini_briefing"):
-            st.write(
-                st.session_state["gemini_briefing"]
-            )
-
-# 5. GRID DIGITAL TWIN
-
-with twin_tab:
-    st.subheader(
-        "Synthetic electrical network digital twin"
+        yaxis=dict(
+            visible=False,
+            range=[.4, 3.6]
+        ),
+        margin=dict(
+            l=20, r=20, t=20, b=20
+        ),
+        showlegend=False
     )
 
     st.plotly_chart(
-        twin_chart(nodes),
+        fig,
         use_container_width=True
-    )
-
-    st.caption(
-        "Red = directly failed; amber = disconnected "
-        "by upstream failure; green = energized. "
-        "This is a dependency graph, not a power-flow model."
     )
 
     st.dataframe(
@@ -1116,94 +1281,141 @@ with twin_tab:
             {
                 "ID": n["id"],
                 "Asset": n["name"],
-                "Upstream": n["parent"] or "—",
-                "Status": n["status"]
+                "Parent": n["parent"] or "—",
+                "Status": states[n["id"]]["status"],
+                "Customers": n["customers"]
             }
-            for n in nodes
+            for n in subset
         ]),
-        use_container_width=True,
-        hide_index=True
-    )
-
-# 6. COMMUNITY + ECONOMIC IMPACT
-
-with impact_tab:
-    st.subheader(
-        "Community and economic impact scenarios"
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        cost = st.number_input(
-            "Illustrative outage cost per customer-hour ($)",
-            1.0, 100.0, 12.0, 1.0
-        )
-
-    with c2:
-        backup_kw = st.number_input(
-            "Backup generator kW per customer (assumption)",
-            0.0, 5.0, 0.5, 0.1
-        )
-
-    with c3:
-        emissions = st.number_input(
-            "Generator kg CO₂ per kWh (assumption)",
-            0.0, 2.0, 0.7, 0.1
-        )
-
-    customer_hours = sum(
-        n["customers"] * n["estimated_hours"]
-        for n in offline
-    )
-
-    p1, p2, p3 = st.columns(3)
-
-    p1.metric(
-        "Estimated customer-outage hours",
-        f"{customer_hours:,.0f}"
-    )
-
-    p2.metric(
-        "Illustrative economic exposure",
-        f"${customer_hours * cost:,.0f}"
-    )
-
-    p3.metric(
-        "Backup generation CO₂ scenario",
-        f"{customer_hours * backup_kw * emissions:,.0f} kg"
+        hide_index=True,
+        use_container_width=True
     )
 
     st.caption(
-        "Assumption-based calculations, not measured "
-        "outage costs, emissions, or validated benefits."
+        "Red: direct failure. "
+        "Amber: upstream outage. "
+        "Teal: energized. "
+        "All connections are fictional."
     )
 
-    if offline:
-        impacts = pd.DataFrame([
-            {
-                "Asset": n["name"],
-                "Customer-outage hours": round(
-                    n["customers"] * n["estimated_hours"]
-                )
-            }
-            for n in offline
-        ])
+# ==================================================
+# COMMUNITY + ECONOMIC IMPACT
+# ==================================================
 
-        st.bar_chart(
-            impacts.set_index("Asset"),
-            color=CYAN
+elif page == "Impact":
+    st.subheader(
+        "Community and economic exposure"
+    )
+
+    st.write(
+        "Adjust assumptions to estimate impacts. "
+        "These are scenario estimates, "
+        "not measured savings."
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        hourly_cost = st.number_input(
+            "Illustrative economic impact "
+            "($ per customer-hour)",
+            min_value=0.0,
+            max_value=100.0,
+            value=12.0,
+            step=1.0
         )
-    else:
-        st.success(
-            "No simulated customer outages "
-            "in the current scenario."
-        )
+
+    with c2:
+        backup_fraction = st.slider(
+            "Share of affected customers "
+            "needing backup generation",
+            0, 100, 20
+        ) / 100
+
+    baseline = base_plan["customer_hours"]
+
+    a, b, c = st.columns(3)
+
+    a.metric(
+        "Currently affected customers",
+        f"{affected:,}"
+    )
+
+    b.metric(
+        "Modeled customer-outage hours",
+        f"{baseline:,}"
+    )
+
+    c.metric(
+        "Illustrative economic exposure",
+        f"${baseline * hourly_cost:,.0f}"
+    )
+
+    st.subheader("Strategy sensitivity")
+
+    impact_df = pd.DataFrame([
+        {
+            "Strategy": name,
+            "Customer-outage hours": plan[
+                "customer_hours"
+            ],
+            "Illustrative cost ($)": round(
+                plan["customer_hours"] * hourly_cost
+            ),
+            "Assumed backup customer-hours": round(
+                plan["customer_hours"]
+                * backup_fraction
+            )
+        }
+        for name, plan in plans.items()
+    ])
+
+    st.dataframe(
+        impact_df,
+        hide_index=True,
+        use_container_width=True
+    )
+
+    st.caption(
+        "Customer-outage hours use one sequential "
+        "crew and fixed example repair durations. "
+        "Economic multipliers and backup assumptions "
+        "are user-adjustable. "
+        "No avoided-cost claim is made."
+    )
+
+# ==================================================
+# ACTIVITY TIMELINE
+# ==================================================
+
+else:
+    st.subheader("Operations activity")
+
+    st.write(
+        "A timestamped record of actions within "
+        "this shared demonstration instance."
+    )
+
+    if st.button("Refresh activity"):
+        st.rerun()
+
+    event_table()
+
+    st.divider()
+
+    st.caption(
+        "For persistent records on Render, "
+        "provision PostgreSQL and set DATABASE_URL. "
+        "This public prototype has no login or "
+        "access controls. Do not upload "
+        "confidential grid information."
+    )
 
 st.divider()
 
 st.caption(
-    "GridHive HackSTEM semifinal prototype · "
-    "Synthetic infrastructure and financial data · "
+    "GRIDHIVE / THE ANTHILL V4 · "
+    "Educational prototype · "
+    "Synthetic assets and scenarios · "
     "Human review required"
 )
